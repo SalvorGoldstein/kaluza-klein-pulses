@@ -64,6 +64,10 @@ grid points runs in parallel (OpenMP). This assumes the metric does not depend o
 examples). If yours does, set `metricIsStatic = false` (`rgsim/system.h`); call `resetMetricCache()` if you change the metric
 or the grid. On one core, a grid of 150 000 points needs about 45 s for the one-time setup and then about 0.3 s per time step.
 
+## Example: pulse around a Kerr-Newman black hole
+
+![Pulse around a black hole](docs/blackhole.gif)
+
 ## Credits
 
 Claude (Anthropic) wrote the RK4 part (`rk4A`, `systemsolver.*`) and the system part (`systemA`, `system.*`) of the
