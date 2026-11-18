@@ -66,3 +66,18 @@ vcpkg_installed/
 # test output & cache
 Testing/
 .cache/
+
+# programs built by make
+main_blackhole
+main_cartesian
+main_wormhole
+
+# generated data and animations
+python/data/
+python/dataforpy.dat
+python/*.mp4
+python/*.gif
+__pycache__/
+
+# editor
+.vscode/
