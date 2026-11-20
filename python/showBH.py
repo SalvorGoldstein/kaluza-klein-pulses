@@ -47,7 +47,7 @@ vmax = max(z.max() for z in Z)
 # systemA does not evolve A_0 (its rate is 0), so this column is 0 everywhere and the panel is skipped below;
 # it appears automatically if A_0 is ever evolved.  (The old psi = ln Phi and dilaton columns no longer exist.)
 extra = []
-names = ["A_0 (scalar potential)"]
+names = ["A_0 (scalar potential)", "dilaton"]
 ncols_file = planes[0].shape[2]
 for c in range(3, ncols_file):
     Zc = [P[:, :, c] for P in planes][:n]
@@ -66,8 +66,8 @@ fig.colorbar(mesh, ax=ax, label="|A|  (the pulse)")
 ax.set_title("norm of A")
 meshes = [mesh]
 extraZ = []
-for k, (name, Zc, m) in enumerate(extra):
-    axk = axs[k + 1]
+for j, (name, Zc, m) in enumerate(extra):      # (j, not k: k is the metres -> km factor used below)
+    axk = axs[j + 1]
     axk.set_facecolor("black")
     mk = axk.pcolormesh(X, Y, Zc[0], shading="gouraud", cmap="coolwarm", vmin=-m, vmax=m)   # same symmetric range for all frames
     fig.colorbar(mk, ax=axk, label=name)
@@ -86,8 +86,8 @@ sup = fig.suptitle("")
 
 def update(i):
     meshes[0].set_array(Z[i])                    # keep the 2D shape (a flattened array breaks gouraud shading in recent matplotlib)
-    for k, Zc in enumerate(extraZ):
-        meshes[k + 1].set_array(Zc[i])
+    for j, Zc in enumerate(extraZ):
+        meshes[j + 1].set_array(Zc[i])
     sup.set_text("t = %.3e s   max|A| = %.2e   (%d/%d)" % (i * dtf, Z[i].max(), i + 1, n))
     return meshes
 

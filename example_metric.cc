@@ -231,3 +231,21 @@ func ellis_cartesian(int i, int j)
         };
     return constant(0.0);
 }
+
+// Spatially flat FLRW in comoving Cartesian coordinates: ds^2 = c^2 dt^2 - a(t)^2 (dx^2 + dy^2 + dz^2).
+// de Sitter expansion a = exp(H t): the only flat FLRW that is a solution of the Einstein equations without matter
+// (vacuum + cosmological constant, Lambda = 3 H^2 / c^2).
+// Time dependent: set metricIsStatic = false; homogeneous: set metricIsHomogeneous = true (see rgsim/system.h).
+func flrw_cartesian(int i, int j)
+{
+    if (i > j) swap(i, j);
+
+    if (i == 0 && j == 0) return constant(c * c);
+    if (i == j)
+        return [](const array<dual,DIM>& x) {
+            dual a = exp(flrw_H * x[0]);
+            dual res = -a * a;
+            return res;
+        };
+    return constant(0.0);
+}

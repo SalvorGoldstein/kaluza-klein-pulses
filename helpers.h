@@ -117,3 +117,25 @@ inline double cflTimeStep(const std::vector<std::array<double,16>>& gi, const do
     }
     return safety / std::sqrt(w2max);
 }
+
+// ---- dilaton (see rgsim/system.h) ----
+// Zero scalar grid with the same shape as the point grid.
+inline rgsim::SGrid makeScalarGrid(const rgsim::PointGrid& pts, double v = 0.0)
+{
+    return rgsim::SGrid(pts.size(), std::vector<std::vector<double>>(pts[0].size(), std::vector<double>(pts[0][0].size(), v)));
+}
+
+// Optional last questions of the three programs: with the dilaton the scalar field is evolved too (stable for much
+// larger pulses). Missing answers (old input files) mean "no dilaton".
+inline int askDilaton()
+{
+    int idil = 0;
+    std::cout << "dilaton? (0 = no: frozen scalar, old equation; 1 = yes: dynamical dilaton, stable) [0]: ";
+    if (!(std::cin >> idil)) idil = 0;
+    if (idil) {
+        double a = rgsim::dilatonCoupling;
+        std::cout << "dilaton coupling a (Kaluza-Klein value sqrt(3) = 1.732; smaller = weaker coupling, more stable) [1.732]: ";
+        if (std::cin >> a && a > 0.0) rgsim::dilatonCoupling = a;
+    }
+    return idil;
+}

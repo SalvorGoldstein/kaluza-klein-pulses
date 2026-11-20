@@ -15,6 +15,11 @@ inline constexpr double J_bh    = G * M_bh * M_bh / c;               // angular 
 inline constexpr double a_spin  = J_bh / (M_bh * c);                 // spin length a = J/(Mc)
 inline constexpr double r_Q2    = G * Q * Q / (4 * pi * eps0 * c * c * c * c);
 inline constexpr double a_wh    = r_s;                               // wormhole throat size
+inline constexpr double omega_m      = 0.315;
+inline constexpr double omega_lambda = 0.685;
+inline constexpr double H_0          = 2.26e-18; 
+
+
 
 // g_{mu nu}(t, r, th, ph), signature (+,-,-,-), index = coordinate (0=t, 1=r, 2=th, 3=ph)
 func minkowski(int i, int j);            // flat space, spherical coordinates
@@ -27,8 +32,9 @@ func ellis_wormhole(int i, int j);
 // Cartesian versions, same index convention but coordinates (0=t, 1=x, 2=y, 3=z)
 // (the wormhole throat is at r = sqrt(x^2+y^2+z^2) = 0, so keep the grid away from the origin)
 func minkowski_cartesian(int i, int j);   // flat space
-func ellis_cartesian(int i, int j);       // Ellis wormhole, same metric as ellis_wormhole
-
+func ellis_cartesian(int i, int j);
+inline double flrw_H = 0.0;              // expansion rate H (1/s) of flrw_cartesian
+func flrw_cartesian(int i, int j);        // flat FLRW, de Sitter a = exp(H t), comoving Cartesian coordinates       // Ellis wormhole, same metric as ellis_wormholeyy
 // builds the whole 4x4 metric from one of the functions above
 inline met makeMetric(func (*m)(int, int))
 {

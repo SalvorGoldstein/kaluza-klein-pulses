@@ -20,13 +20,9 @@ using autodiff::dual;
 using func    = std::function<dual(const std::array<dual,DIM>&)>;
 using met     = std::vector<std::vector<func>>;
 using christ  = std::vector<std::vector<std::vector<func>>>;
-using spatial = std::array<double, DIM - 1>;
-using vec3  = std::array<double,3>;
-using vec4  = std::array<double,4>;
-using mat4  = std::array<vec4,4>;
 using fvec  = std::vector<func>;
-using state     = std::vector<double>;
-using field_rhs = std::function<void(const state&, double, state&)>; 
+
+
 
 using rhs_fn = std::function<void(double (&)[2*DIM], double, double (&)[2*DIM], int,
                                   const christ&)>;

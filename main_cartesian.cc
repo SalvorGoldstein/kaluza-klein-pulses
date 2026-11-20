@@ -11,6 +11,7 @@
 #include <algorithm>
 #include <random>
 #include <array>
+#include <cstdlib>
 
 #include "rgsim/rgsim.h"
 #include "example_metric.h"
@@ -34,6 +35,7 @@ int main()
     cin >> nr;
     cout << "duration (1 = light crosses the grid once, 3 = three times, ...): ";
     cin >> tfac;
+    const int idil = askDilaton();
     cout << "perfect!" << endl;
 
     if (ipulse < 0 || ipulse > 3 || icentre < 0 || icentre > 1 || nr < 5 || size <= 0.0 || tfac <= 0.0) {
@@ -67,6 +69,7 @@ int main()
 
     // ---- the pulse: centre of the grid, or a random place (normal law around the centre,
     //      spread size/12, never further than size/4 from it) ----
+    if (const char* e = getenv("PC_AMP")) pc_amp = atof(e);
     pc_x = 0.5 * size;  pc_y = 0.0;  pc_z = 0.0;         // centre of the grid
     pc_w = size / 10.0;                                  // width of the pulse
     if (icentre == 1) {
@@ -89,6 +92,11 @@ int main()
 
     const RhsA rhs = [&](const AGrid& a, const AGrid& v, double tt, AGrid& da, AGrid& dv) {
         systemA(pts, a, v, bc, gam, g, ginv, Phi, phihat, tt, da, dv);
+    };
+    SGrid phi = makeScalarGrid(pts), Pi = makeScalarGrid(pts);          // dilaton and d_t dilaton (start at 0)
+    const RhsAphi rhsD = [&](const AGrid& a, const AGrid& v, const SGrid& p, const SGrid& q, double tt,
+                             AGrid& da, AGrid& dv, SGrid& dp, SGrid& dq) {
+        systemAphi(pts, a, v, p, q, bc, gam, g, ginv, Phi, tt, da, dv, dp, dq);
     };
     const vector<array<double,16>> gi = inverseOnGrid(pts, ginv);
 
@@ -131,14 +139,19 @@ int main()
                     const array<double,4> a = A[i0][i1][iz].getvalue();
                     const double Aa[4] = { 0.0, a[1], a[2], a[3] };            // A_0 = 0
                     plan << r0 + i0 * dr << " " << (i1 - mid) * dr << " "
-                         << normA(gi[((size_t)i0 * nr + i1) * nr + iz], Aa) << "\n";
+                         << normA(gi[((size_t)i0 * nr + i1) * nr + iz], Aa);
+                    if (idil) plan << " " << phi[i0][i1][iz];                  // column 4: the dilaton
+                    plan << "\n";
                 }
             plan.close();
             ++frame;
             cout << "step " << s << "/" << steps << "  t = " << t << "  ("
                  << chrono::duration<double>(chrono::steady_clock::now() - start).count() << " s)" << endl;
         }
-        if (s < steps) { rk4A(rhs, A, V, t, dt); t += dt; }
+        if (s < steps) {
+            if (idil) rk4Aphi(rhsD, A, V, phi, Pi, t, dt); else rk4A(rhs, A, V, t, dt);
+            t += dt;
+        }
     }
     cout << "done: " << nframes << " frames written in python/data/" << endl;
     return 0;

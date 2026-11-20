@@ -64,6 +64,31 @@ grid points runs in parallel (OpenMP). This assumes the metric does not depend o
 examples). If yours does, set `metricIsStatic = false` (`rgsim/system.h`); call `resetMetricCache()` if you change the metric
 or the grid. On one core, a grid of 150 000 points needs about 45 s for the one-time setup and then about 0.3 s per time step.
 
+## The dilaton (new)
+
+The old equation `systemA` is the coordinate component `R_{mu 5} = 0` of the 5D vacuum Einstein equations with the
+scalars (`Phi`, `phihat`) **frozen**. Written in the KK frame, `R_{mu 5} = Phi (R_{(mu)(5)} + A_mu R_{(55)})`: the extra term
+`A_mu * kA` (`kA = h^2/4 F^2 - Phi box`) is `A_mu R_{55}`. With a frozen scalar `R_{55} != 0`, and since `F^2 = 2(B^2 - E^2)` this
+term is a *negative mass squared* wherever `E^2 > B^2`: exponential growth, then NaN. (Checked: switching only that term off removes the blow-up.)
+
+`systemAphi` / `rk4Aphi` evolve a dynamical dilaton `phi` together with `A` (so `R_{55} = 0` holds and that term disappears):
+
+    L = sqrt|g| [ 1/2 (d phi)^2 - 1/4 h e^{-a phi} F^2 ]      =>   nabla_mu(h e^{-a phi} F^{mu nu}) = 0 ,   box phi = (a/4) h e^{-a phi} F^2
+
+`a = sqrt(3)` is the Kaluza-Klein value (5D vacuum Einstein -> 4D Einstein-Maxwell-dilaton). The energy
+`Pi^2/2c^2 + |grad phi|^2/2 + e^{-a phi}(|d_t A|^2/c^2 + |B|^2)/2` is positive and conserved on a static background.
+All three programs ask at the end "dilaton? (0/1)" and, if 1, the coupling `a`; old input files still work (no answer = old equation).
+The Plane files get one more column (the dilaton) and the Python scripts show it as an extra panel.
+Limits: the stability range is set by `a^2 A^2 / 4` (about `|A| <~ 3-4` for `a = sqrt(3)` on 64^3 points; the old equation failed
+from `|A| ~ 3`); smaller `a` allows larger `A`. It also needs enough points across the pulse (>= ~6). `PC_AMP=<x> ./main_cartesian`
+overrides the pulse amplitude (default 1e-5). `make test` runs the energy/stability test and the FLRW test.
+
+## Time-dependent background (FLRW)
+
+`flrw_cartesian` (flat de Sitter, `a = exp(H t)`, set `flrw_H`) with `metricIsStatic = false` and `metricIsHomogeneous = true`
+(metric data evaluated once per call). `tests/test_flrw.cc` checks conformal invariance: a Maxwell pulse equals the flat-space one
+at conformal time (0.13 % difference for a up to 2.7).
+
 ## Example: pulse around a Kerr-Newman black hole
 
 ![Pulse around a black hole](docs/blackhole.gif)

@@ -46,6 +46,7 @@ int main()
     cin >> tfac;
     cout << "include the black hole's own electromagnetic field? (0 = no, 1 = yes, Kerr-Newman charge and spin): ";
     cin >> ikn;
+    const int idil = askDilaton();
     cout << "perfect!" << endl;
 
     if (ipulse < 0 || ipulse > 3 || nr < 5 || ikn < 0 || ikn > 1 || j1 <= 1.5 || tfac <= 0.0) {
@@ -139,6 +140,14 @@ int main()
         systemA(pts, a, v, bc, gam, g, ginv, Phi, phihat, tt, da, dv);
     };
 
+    // dilaton (see rgsim/system.h). The black hole's own field sources it too, so the background-only run gets its own
+    // dilaton (phib, Pib) and the plots show phi - phib, like the other fields.
+    SGrid phi = makeScalarGrid(pts), Pi = makeScalarGrid(pts), phib = makeScalarGrid(pts), Pib = makeScalarGrid(pts);
+    const RhsAphi rhsD = [&](const AGrid& a, const AGrid& v, const SGrid& p, const SGrid& q, double tt,
+                             AGrid& da, AGrid& dv, SGrid& dp, SGrid& dq) {
+        systemAphi(pts, a, v, p, q, bc, gam, g, ginv, Phi, tt, da, dv, dp, dq);
+    };
+
     // ---- inverse metric at every grid point, computed once (the metric is static): used for the time step and
     //      for the norm of A in the plots ----
     const vector<array<double,16>> gi = inverseOnGrid(pts, ginv);
@@ -169,7 +178,7 @@ int main()
 
     int frame = 0;
     auto start = chrono::steady_clock::now();
-    double t = 0;
+    double t = 0.1;
     for (int s = 0; s <= steps; ++s) {
         if (s % every == 0 || s == steps) {
             // radial line through the pulse: columns r, A_r, A_theta, A_phi (perturbation)
@@ -194,7 +203,9 @@ int main()
                     const double r  = r0 + i0 * dr;
                     const double ph = i2 * dph;
                     plan << r * cos(ph) << " " << r * sin(ph) << " " << sn << " "
-                         << pert(i0, hth, i2, 0) << "\n";
+                         << pert(i0, hth, i2, 0);
+                    if (idil) plan << " " << phi[i0][hth][i2] - (ikn == 1 ? phib[i0][hth][i2] : 0.0);   // column 5: the dilaton
+                    plan << "\n";
                 }
             plan.close();
             ++frame;
@@ -202,8 +213,13 @@ int main()
                  << chrono::duration<double>(chrono::steady_clock::now() - start).count() << " s)" << endl;
         }
         if (s < steps) {
-            rk4A(rhs, A, V, t, dt);
-            if (ikn == 1) rk4A(rhs, Ab, Vb, t, dt);      // background alone, same step
+            if (idil) {
+                rk4Aphi(rhsD, A, V, phi, Pi, t, dt);
+                if (ikn == 1) rk4Aphi(rhsD, Ab, Vb, phib, Pib, t, dt);
+            } else {
+                rk4A(rhs, A, V, t, dt);
+                if (ikn == 1) rk4A(rhs, Ab, Vb, t, dt);      // background alone, same step
+            }
             t += dt;
         }
     }

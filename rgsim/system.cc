@@ -4,6 +4,7 @@
 #include <cmath>
 #include <iostream>
 #include "Geodiff.h"
+#include "funcoperator.h"
 
 namespace rgsim {
 
@@ -48,6 +49,7 @@ static double dOutward(double f0, double f1, double f2, double h)
 // keep the numbers. If the metric depends on t, set  metricIsStatic = false  and they are rebuilt at every call.
 // If you change the metric, Phi, phihat or the grid, call resetMetricCache().
 bool metricIsStatic = true;
+bool metricIsHomogeneous = false;
 
 namespace {
 struct PointData {
@@ -56,6 +58,7 @@ struct PointData {
     double Gc[4];          // Gc^l = g^{ar} Gam^l_{ar}
     double h, Phil;        // h = Phi^2 and Phi
     double box;            // g^{ab} d_a d_b phihat
+    double dlnh[4];        // d_a ln h  (used by the dilaton equations)
 };
 std::vector<PointData> cache;
 int    cacheN[3] = {0, 0, 0};
@@ -85,6 +88,10 @@ static void fillPointData(PointData& pd, const std::array<dual,DIM>& x,
     }
 
     pd.Phil = Phi(x).val;
+    for (int a = 0; a < 4; a++) {
+        func Phi_ = Phi;
+        pd.dlnh[a] = 2.0 * partial(Phi_, x, a).val / pd.Phil;
+    }
     pd.h = pd.Phil * pd.Phil;
 
     pd.box = 0.0;
@@ -98,13 +105,18 @@ static void fillPointData(PointData& pd, const std::array<dual,DIM>& x,
 // ======================================================================
 // The equation of motion
 // ======================================================================
-void systemA(const PointGrid& pts, const AGrid& A, const AGrid& V,
+double dilatonCoupling = std::sqrt(3.0);
+
+static void systemImpl(const PointGrid& pts, const AGrid& A, const AGrid& V,
+             const SGrid* phiP, const SGrid* PiP,
              const int bc[3][2],
              const christ& gam, const met& g, const met& ginv,
              const func& Phi, const func& phihat, double t,
-             AGrid& dA, AGrid& dV)
+             AGrid& dA, AGrid& dV, SGrid* dphiP, SGrid* dPiP)
 {
-    (void)g;    // the equation only needs ginv and gam, g is not used here
+    (void)g;
+    const bool dil = (phiP != nullptr);
+    const double acoup = dilatonCoupling;    // the equation only needs ginv and gam, g is not used here
 
     // ---------------- Step 1: sizes, periodic axes, spacing ----------------
     int n[3];                                   // number of points on each axis
@@ -134,17 +146,25 @@ void systemA(const PointGrid& pts, const AGrid& A, const AGrid& V,
 
     dA = A;                                     // gives dA and dV the right size
     dV = A;
+    if (dil) { *dphiP = *phiP; *dPiP = *phiP; }
 
     // ---------------- Step 1b: metric data at every grid point (cached) ----------------
     if (!cacheOk || (!metricIsStatic && cacheT != t) ||
         cacheN[0] != n[0] || cacheN[1] != n[1] || cacheN[2] != n[2]) {
         cache.resize((size_t)n[0] * n[1] * n[2]);
+        if (metricIsHomogeneous) {
+            // same metric data at every point (e.g. flat FLRW): evaluate once, copy everywhere (cheap even if g depends on t)
+            PointData one;
+            fillPointData(one, pointX(pts, 0, 0, 0, t), gam, ginv, Phi, phihat);
+            for (size_t p = 0; p < cache.size(); p++) cache[p] = one;
+        } else {
         #pragma omp parallel for collapse(2) schedule(static)
         for (int i0 = 0; i0 < n[0]; i0++)
             for (int i1 = 0; i1 < n[1]; i1++)
                 for (int i2 = 0; i2 < n[2]; i2++)
                     fillPointData(cache[((size_t)i0 * n[1] + i1) * n[2] + i2],
                                   pointX(pts, i0, i1, i2, t), gam, ginv, Phi, phihat);
+        }
         cacheN[0] = n[0]; cacheN[1] = n[1]; cacheN[2] = n[2];
         cacheT = t;
         cacheOk = true;
@@ -260,6 +280,67 @@ void systemA(const PointGrid& pts, const AGrid& A, const AGrid& V,
                     for (int s = 0; s < 4; s++)
                         FF -= W[a][s] * W[s][a];
 
+                // ---- 2c': dilaton and its derivatives (only in dilaton mode) ----
+                double ph = 0.0, dp[4] = {0,0,0,0}, ddp[4][4];
+                for (int a = 0; a < 4; a++) for (int b = 0; b < 4; b++) ddp[a][b] = 0.0;
+                if (dil) {
+                    const SGrid& P = *phiP; const SGrid& Q = *PiP;
+                    ph = P[i0][i1][i2];
+                    dp[0] = Q[i0][i1][i2];
+                    for (int k = 0; k < 3; k++) {
+                        int after[3] = {i0, i1, i2}, before[3] = {i0, i1, i2};
+                        after[k] = up[k]; before[k] = down[k];
+                        double pa = P[after[0]][after[1]][after[2]], pb = P[before[0]][before[1]][before[2]];
+                        double qa = Q[after[0]][after[1]][after[2]], qb = Q[before[0]][before[1]][before[2]];
+                        dp[k+1] = (pa - pb) / (2.0 * dq[k]);
+                        ddp[k+1][k+1] = (pa - 2.0 * ph + pb) / (dq[k] * dq[k]);
+                        ddp[0][k+1] = ddp[k+1][0] = (qa - qb) / (2.0 * dq[k]);
+                    }
+                    for (int k = 0; k < 3; k++) for (int l = k + 1; l < 3; l++) {
+                        int pp[3] = {i0,i1,i2}, pm[3] = {i0,i1,i2}, mp[3] = {i0,i1,i2}, mm[3] = {i0,i1,i2};
+                        pp[k]=up[k];   pp[l]=up[l];
+                        pm[k]=up[k];   pm[l]=down[l];
+                        mp[k]=down[k]; mp[l]=up[l];
+                        mm[k]=down[k]; mm[l]=down[l];
+                        double mixed = (P[pp[0]][pp[1]][pp[2]] - P[pm[0]][pm[1]][pm[2]]
+                                      - P[mp[0]][mp[1]][mp[2]] + P[mm[0]][mm[1]][mm[2]]) / (4.0 * dq[k] * dq[l]);
+                        ddp[k+1][l+1] = ddp[l+1][k+1] = mixed;
+                    }
+                }
+
+                if (dil) {
+                    // d_a ln w, with w = h e^{-a phi}
+                    double dlnw[4];
+                    for (int a = 0; a < 4; a++) dlnw[a] = pd.dlnh[a] - acoup * dp[a];
+                    std::array<double,4> rateA, rateV;
+                    for (int c = 0; c < 4; c++) { rateA[c] = dAm[0][c]; rateV[c] = 0.0; }
+                    for (int mu = 1; mu < 4; mu++) {
+                        double s = 0.0;                 // nabla^a F_{a mu} without the d_t d_t A term
+                        for (int a = 0; a < 4; a++)
+                            for (int r = 0; r < 4; r++)
+                                s += gi[a][r] * (dd[a][r][mu] - dd[a][mu][r]);
+                        for (int l = 0; l < 4; l++) {
+                            s -= Gc[l] * F[l][mu];
+                            for (int a = 0; a < 4; a++) s -= Gam[l][a][mu] * W[a][l];
+                        }
+                        double J = 0.0;                 // (d^a ln w) F_{a mu}
+                        for (int a = 0; a < 4; a++) J += dlnw[a] * W[a][mu];
+                        rateV[mu] = -(s + J) / gi[0][0];
+                    }
+                    // box phi = g^{ab} d_a d_b phi - Gc^c d_c phi = (a/4) h e^{-a phi} F^2
+                    double rest = 0.0;
+                    for (int a = 0; a < 4; a++)
+                        for (int b = 0; b < 4; b++)
+                            if (!(a == 0 && b == 0)) rest += gi[a][b] * ddp[a][b];
+                    for (int c = 0; c < 4; c++) rest -= Gc[c] * dp[c];
+                    double src = 0.25 * acoup * h * std::exp(-acoup * ph) * FF;
+                    (*dphiP)[i0][i1][i2] = dp[0];
+                    (*dPiP)[i0][i1][i2]  = (src - rest) / gi[0][0];
+                    dA[i0][i1][i2].setvalue(rateA);
+                    dV[i0][i1][i2].setvalue(rateV);
+                    continue;
+                }
+
                 // ---- 2d: the equation  c0 * (d_t d_t A_mu) + (h/2) * s + A_mu * kA = 0 ----
                 std::array<double,4> rateA;                 // d_t A  = V
                 std::array<double,4> rateV;                 // d_t V  = d_t d_t A
@@ -374,10 +455,50 @@ void systemA(const PointGrid& pts, const AGrid& A, const AGrid& V,
 
                     dA[i0][i1][i2].setvalue(rateA);
                     dV[i0][i1][i2].setvalue(rateV);
+
+                    if (dil) {
+                        double rp = 0.0, rq = 0.0;              // rates of phi and Pi on the border
+                        if (dirichlet) {
+                        } else if (neumannAxis >= 0) {
+                            int k = neumannAxis;
+                            int inside[3] = {i0, i1, i2};
+                            inside[k] = (ii[k] == 0) ? 1 : n[k] - 2;
+                            rp = (*dphiP)[inside[0]][inside[1]][inside[2]];
+                            rq = (*dPiP)[inside[0]][inside[1]][inside[2]];
+                        } else {
+                            const double (&gi)[4][4] = cache[((size_t)i0 * n[1] + i1) * n[2] + i2].gi;
+                            for (int q = 0; q < count; q++) {
+                                int k = borderAxis[q];
+                                double speed = std::sqrt(std::max(0.0, -gi[k+1][k+1] / gi[0][0]));
+                                int step = (ii[k] == 0) ? 1 : -1;
+                                int in1[3] = {i0, i1, i2}, in2[3] = {i0, i1, i2};
+                                in1[k] = ii[k] + step;  in2[k] = ii[k] + 2 * step;
+                                const SGrid& P = *phiP; const SGrid& Q = *PiP;
+                                rp -= speed * dOutward(P[i0][i1][i2], P[in1[0]][in1[1]][in1[2]], P[in2[0]][in2[1]][in2[2]], dq[k]);
+                                rq -= speed * dOutward(Q[i0][i1][i2], Q[in1[0]][in1[1]][in1[2]], Q[in2[0]][in2[1]][in2[2]], dq[k]);
+                            }
+                        }
+                        (*dphiP)[i0][i1][i2] = rp;
+                        (*dPiP)[i0][i1][i2]  = rq;
+                    }
                 }
             }
         }
     }
+}
+
+void systemA(const PointGrid& pts, const AGrid& A, const AGrid& V, const int bc[3][2],
+             const christ& gam, const met& g, const met& ginv,
+             const func& Phi, const func& phihat, double t, AGrid& dA, AGrid& dV)
+{
+    systemImpl(pts, A, V, nullptr, nullptr, bc, gam, g, ginv, Phi, phihat, t, dA, dV, nullptr, nullptr);
+}
+
+void systemAphi(const PointGrid& pts, const AGrid& A, const AGrid& V, const SGrid& phi, const SGrid& Pi,
+                const int bc[3][2], const christ& gam, const met& g, const met& ginv, const func& Phi, double t,
+                AGrid& dA, AGrid& dV, SGrid& dphi, SGrid& dPi)
+{
+    systemImpl(pts, A, V, &phi, &Pi, bc, gam, g, ginv, Phi, constant(0.0), t, dA, dV, &dphi, &dPi);
 }
 
 }

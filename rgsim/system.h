@@ -31,11 +31,33 @@ void systemA(const PointGrid& pts, const AGrid& A, const AGrid& V,
              const func& Phi, const func& phihat, double t,
              AGrid& dA, AGrid& dV);
 
+// ---------------------------------------------------------------------------------------------
+// DILATON (dynamical scalar)  --  see README "The dilaton".
+// A scalar field phi (with Pi = d_t phi) is evolved together with A on the fixed metric. Action (signature +,-,-,-):
+//      L = sqrt|g| [ 1/2 d_mu phi d^mu phi  -  1/4 e^{-a phi} h F_{mu nu} F^{mu nu} ]
+//      =>  nabla_mu( h e^{-a phi} F^{mu nu} ) = 0 ,      box phi = (a/4) h e^{-a phi} F_{mu nu} F^{mu nu}
+// a = sqrt(3) is the Kaluza-Klein value (5D vacuum Einstein -> 4D Einstein-Maxwell-dilaton).
+// This is R_55 = 0 of the 5D equations: it removes the  A_mu * R_55  term of the frozen-scalar equation (the term
+// that makes the old systemA blow up when E^2 > B^2) and conserves a positive energy.
+// ---------------------------------------------------------------------------------------------
+using SGrid = std::vector<std::vector<std::vector<double>>>;
+extern double dilatonCoupling;          // a, default sqrt(3)
+
+// Same as systemA, but A, V AND the dilaton (phi, Pi) are evolved. The "phihat" term is not used.
+//   dphi = Pi,  dPi = d_t d_t phi          (same boundary conditions as A)
+void systemAphi(const PointGrid& pts, const AGrid& A, const AGrid& V, const SGrid& phi, const SGrid& Pi,
+                const int bc[3][2],
+                const christ& gam, const met& g, const met& ginv, const func& Phi, double t,
+                AGrid& dA, AGrid& dV, SGrid& dphi, SGrid& dPi);
+
 // The metric data (inverse metric, Christoffel symbols, ...) is computed once per grid point and kept.
 // This is valid when the metric does not depend on t (true for all the examples).
 // If it does, set metricIsStatic = false (the data is then rebuilt at every call).
 // Call resetMetricCache() if you change the metric, Phi, phihat or the grid.
 extern bool metricIsStatic;
+// If the metric data is the same at every grid point (spatially homogeneous, e.g. flat FLRW), set this too: the data is then
+// computed once per call instead of once per grid point, so a time-dependent metric (metricIsStatic = false) stays cheap.
+extern bool metricIsHomogeneous;
 void resetMetricCache();
 
 }

@@ -36,6 +36,7 @@ int main()
     cin >> nr;
     cout << "duration (1 = light crosses the radial range once, 3 = three times, ...): ";
     cin >> tfac;
+    const int idil = askDilaton();
     cout << "perfect!" << endl;
 
     if (ipulse < 0 || ipulse > 3 || nr < 5 || j1 < 2.0 || tfac <= 0.0) {
@@ -102,6 +103,11 @@ int main()
     const RhsA rhs = [&](const AGrid& a, const AGrid& v, double tt, AGrid& da, AGrid& dv) {
         systemA(pts, a, v, bc, gam, g, ginv, Phi, phihat, tt, da, dv);
     };
+    SGrid phi = makeScalarGrid(pts), Pi = makeScalarGrid(pts);          // dilaton and d_t dilaton (start at 0)
+    const RhsAphi rhsD = [&](const AGrid& a, const AGrid& v, const SGrid& p, const SGrid& q, double tt,
+                             AGrid& da, AGrid& dv, SGrid& dp, SGrid& dq) {
+        systemAphi(pts, a, v, p, q, bc, gam, g, ginv, Phi, tt, da, dv, dp, dq);
+    };
 
     // ---- time step (CFL, see helpers.h) ----
     const vector<array<double,16>> gi = inverseOnGrid(pts, ginv);
@@ -149,14 +155,19 @@ int main()
                     const array<double,4> a = A[i0][hth][i2].getvalue();
                     const double Aa[4] = { 0.0, a[1], a[2], a[3] };            // A_0 = 0
                     plan << r0 + i0 * dr << " " << i2 * dph << " "
-                         << normA(gi[((size_t)i0 * nth + hth) * nph + i2], Aa) << "\n";
+                         << normA(gi[((size_t)i0 * nth + hth) * nph + i2], Aa);
+                    if (idil) plan << " " << phi[i0][hth][i2];                 // column 3: the dilaton
+                    plan << "\n";
                 }
             plan.close();
             ++frame;
             cout << "step " << s << "/" << steps << "  t = " << t << "  ("
                  << chrono::duration<double>(chrono::steady_clock::now() - start).count() << " s)" << endl;
         }
-        if (s < steps) { rk4A(rhs, A, V, t, dt); t += dt; }
+        if (s < steps) {
+            if (idil) rk4Aphi(rhsD, A, V, phi, Pi, t, dt); else rk4A(rhs, A, V, t, dt);
+            t += dt;
+        }
     }
     cout << "done: " << nframes << " frames written in python/data/" << endl;
     return 0;

@@ -7,5 +7,5 @@
 #include "field.h"
 #include "systemsolver.h"
 #include "system.h"
-#include "geodesic.h"
-#include "einstein.h"
+
+
